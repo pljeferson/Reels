@@ -1,0 +1,10 @@
+# LISTA DE REELS — um por linha, pela ordem em que aparecem na grelha.
+# Linhas que começam com # são ignoradas (podes usá-las para "esconder" um reel).
+#
+# Podes misturar 3 tipos:
+#   1) Ficheiro de vídeo que carregaste na pasta "reels"  ->  zara.mp4
+#   2) Link do YouTube (Shorts)                            ->  https://youtube.com/shorts/XXXXXXXXXXX
+#   3) Link do Vimeo                                       ->  https://vimeo.com/123456789
+#
+# Põe os teus reels por baixo desta linha (sem # à frente):
+

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reels</title>
+<style>
+  /* ===== AJUSTES SIMPLES (podes mudar estes valores) ===== */
+  :root {
+    --espaco: 12px;        /* espaço entre os reels */
+    --cantos: 10px;        /* arredondamento dos cantos (0 = quadrado) */
+    --fundo-reel: #111;    /* cor que aparece enquanto o vídeo carrega */
+  }
+  /* ======================================================= */
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: transparent;       /* fica com o fundo do teu Portfolio */
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  body { display: flex; align-items: center; justify-content: center; }
+  #grelha {
+    display: flex; flex-wrap: wrap; justify-content: center;
+    gap: var(--espaco);
+  }
+  .reel {
+    position: relative;
+    aspect-ratio: 9 / 16;
+    border-radius: var(--cantos);
+    overflow: hidden;
+    background: var(--fundo-reel);
+  }
+  .reel iframe, .reel video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    border: 0; display: block;
+    object-fit: cover;
+  }
+  #aviso { color: #888; font-size: 14px; text-align: center; padding: 20px; }
+</style>
+</head>
+<body>
+<div id="grelha"></div>
+
+<script>
+  // Número máximo de colunas (0 = sem limite, a página escolhe sozinha)
+  const MAX_COLUNAS = 0;
+
+  const grelha = document.getElementById('grelha');
+  let total = 0;
+
+  // Converte cada linha do reels.txt num elemento de vídeo
+  function criarReel(linha) {
+    const div = document.createElement('div');
+    div.className = 'reel';
+    let m;
+
+    // YouTube (Shorts, youtu.be, watch?v=, embed/)
+    if ((m = linha.match(/(?:youtube\.com\/(?:shorts\/|watch\?v=|embed\/)|youtu\.be\/)([\w-]{6,})/))) {
+      div.innerHTML = '<iframe loading="lazy" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen ' +
+        'src="https://www.youtube-nocookie.com/embed/' + m[1] + '?rel=0&modestbranding=1&playsinline=1"></iframe>';
+      return div;
+    }
+
+    // Vimeo (público ou não listado com hash)
+    if ((m = linha.match(/vimeo\.com\/(?:video\/)?(\d+)(?:\/([\w]+))?/))) {
+      const hash = m[2] ? '&h=' + m[2] : '';
+      div.innerHTML = '<iframe loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen ' +
+        'src="https://player.vimeo.com/video/' + m[1] + '?title=0&byline=0&portrait=0&dnt=1' + hash + '"></iframe>';
+      return div;
+    }
+
+    // Ficheiro de vídeo (ex.: meu-reel.mp4 dentro da pasta "reels")
+    let src = linha;
+    if (!/^https?:\/\//.test(src) && !src.includes('/')) src = 'reels/' + src;
+    const v = document.createElement('video');
+    v.src = encodeURI(src) + '#t=0.1';   // mostra o 1.º frame como capa
+    v.controls = true;
+    v.playsInline = true;
+    v.preload = 'metadata';
+    // Quando um vídeo começa, os outros param
+    v.addEventListener('play', () => {
+      document.querySelectorAll('video').forEach(o => { if (o !== v) o.pause(); });
+    });
+    div.appendChild(v);
+    return div;
+  }
+
+  // Escolhe o nº de colunas que deixa os reels o maior possível,
+  // cabendo todos dentro da área do embed (sem scroll).
+  function ajustar() {
+    if (!total) return;
+    const W = window.innerWidth, H = window.innerHeight;
+    const G = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--espaco')) || 0;
+    const limite = MAX_COLUNAS > 0 ? Math.min(MAX_COLUNAS, total) : total;
+    let melhor = { c: 1, w: 0 };
+    for (let c = 1; c <= limite; c++) {
+      const linhas = Math.ceil(total / c);
+      const porLargura = (W - G * (c - 1)) / c;
+      const porAltura = ((H - G * (linhas - 1)) / linhas) * 9 / 16;
+      const w = Math.floor(Math.min(porLargura, porAltura));
+      if (w > melhor.w) melhor = { c, w };
+    }
+    document.querySelectorAll('.reel').forEach(r => r.style.width = melhor.w + 'px');
+    grelha.style.width = (melhor.c * melhor.w + G * (melhor.c - 1)) + 'px';
+  }
+
+  fetch('reels.txt?v=' + Date.now())
+    .then(r => r.text())
+    .then(txt => {
+      const linhas = txt.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+      total = linhas.length;
+      if (!total) {
+        grelha.innerHTML = '<div id="aviso">Ainda não há reels. Adiciona links ou ficheiros ao reels.txt.</div>';
+        return;
+      }
+      linhas.forEach(l => grelha.appendChild(criarReel(l)));
+      ajustar();
+    })
+    .catch(() => {
+      grelha.innerHTML = '<div id="aviso">Não consegui ler o reels.txt.</div>';
+    });
+
+  window.addEventListener('resize', ajustar);
+</script>
+</body>
+</html>

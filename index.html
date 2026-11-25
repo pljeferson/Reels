@@ -22,11 +22,12 @@
   body { display: flex; align-items: center; justify-content: center; }
   #grelha {
     display: flex; flex-wrap: wrap; justify-content: center;
+    align-items: flex-start; align-content: flex-start;
     gap: var(--espaco);
   }
   .reel {
     position: relative;
-    aspect-ratio: 9 / 16;
+    flex: 0 0 auto;
     border-radius: var(--cantos);
     overflow: hidden;
     background: var(--fundo-reel);
@@ -76,6 +77,11 @@
     if (!/^https?:\/\//.test(src) && !src.includes('/')) src = 'reels/' + src;
     const v = document.createElement('video');
     v.src = encodeURI(src) + '#t=0.1';   // mostra o 1.º frame como capa
+    // Capa: posters/<nome>.jpg (gerada automaticamente; se não existir, ignora)
+    const nome = src.split('/').pop().replace(/\.[^.]+$/, '');
+    const capa = new Image();
+    capa.onload = () => { v.poster = capa.src; };
+    capa.src = 'posters/' + encodeURIComponent(nome) + '.jpg';
     v.controls = true;
     v.playsInline = true;
     v.preload = 'metadata';
@@ -102,7 +108,8 @@
       const w = Math.floor(Math.min(porLargura, porAltura));
       if (w > melhor.w) melhor = { c, w };
     }
-    document.querySelectorAll('.reel').forEach(r => r.style.width = melhor.w + 'px');
+    const h = Math.floor(melhor.w * 16 / 9);
+    document.querySelectorAll('.reel').forEach(r => { r.style.width = melhor.w + 'px'; r.style.height = h + 'px'; });
     grelha.style.width = (melhor.c * melhor.w + G * (melhor.c - 1)) + 'px';
   }
 

@@ -168,21 +168,20 @@
 
   function srcPreview(div) { return div.dataset.fallback ? div.dataset.completo : div.dataset.preview; }
 
+  // Som liga/desliga no próprio vídeo que já está a tocar (sem trocar de ficheiro = sem cortes)
   function desligar(div) {
-    const v = div.querySelector('video');
     div.classList.remove('ativo');
-    v.muted = true; v.loop = true; v.onended = null;
-    v.src = srcPreview(div); v.play().catch(()=>{});
+    div.querySelector('video').muted = true;
   }
 
   function alternarSom(div) {
     if (ativo === div) { desligar(div); ativo = null; return; }
     if (ativo) desligar(ativo);
     const v = div.querySelector('video');
+    if (!v.getAttribute('src')) v.src = srcPreview(div);
     div.classList.add('ativo');
-    v.loop = false; v.src = div.dataset.completo; v.muted = false;
-    v.play().catch(() => { v.muted = true; v.play().catch(()=>{}); });
-    v.onended = () => { if (ativo === div) { desligar(div); ativo = null; } };
+    v.muted = false;
+    if (v.paused) v.play().catch(() => { v.muted = true; div.classList.remove('ativo'); });
     ativo = div;
   }
 
@@ -234,9 +233,10 @@
   const fmt = t => isFinite(t) ? Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0') : '0:00';
   function atualizarSom() { somVer.innerHTML = vv.muted ? SVG_OFF : SVG_ON; }
 
-  function carregar(i) {
+  function carregar(i, desde) {
     idx = (i + lista.length) % lista.length;
     vv.src = lista[idx].dataset.completo;
+    if (desde) vv.addEventListener('loadedmetadata', () => { try { vv.currentTime = desde; } catch (e) {} }, { once: true });
     vv.poster = lista[idx].style.backgroundImage.slice(5, -2);
     contador.textContent = (idx + 1) + ' / ' + lista.length;
     barra.value = 0;
@@ -252,13 +252,16 @@
     ver.classList.add('aberto'); ver.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
     vv.muted = false; atualizarSom();
-    carregar(i);
+    const t = lista[i].querySelector('video').currentTime || 0;
+    carregar(i, t > 0.3 ? t : 0);
     if (!history.state || !history.state.ver) history.pushState({ ver: 1 }, '');
   }
 
   function fecharVer(viaHistorico) {
     if (!ver.classList.contains('aberto')) return;
+    const tFim = vv.currentTime, tile0 = lista[idx];
     vv.pause(); vv.removeAttribute('src'); vv.load();
+    if (tile0) { const tv = tile0.querySelector('video'); if (tv.getAttribute('src')) { try { tv.currentTime = tFim; } catch (e) {} } }
     ver.classList.remove('aberto', 'parado'); ver.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
     const tile = lista[idx]; if (tile) tile.scrollIntoView({ block: 'nearest' });

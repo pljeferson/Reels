@@ -78,12 +78,18 @@
                 font: 600 14px -apple-system, sans-serif; }
   #ver button svg { width: 22px; height: 22px; fill: #fff; }
   #ver .contador { color: rgba(255,255,255,.8); font-size: 13px; }
-  #ver .baixo { position: absolute; left: 0; right: 0; bottom: 0; padding: 30px 16px max(16px, env(safe-area-inset-bottom));
-                background: linear-gradient(transparent, rgba(0,0,0,.6)); z-index: 2; display: flex; align-items: center; gap: 10px; }
-  #barra { flex: 1; -webkit-appearance: none; appearance: none; height: 4px; background: rgba(255,255,255,.3); border-radius: 2px; outline: none; cursor: pointer; }
-  #barra::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #fff; }
-  #barra::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 0; }
-  #ver .tempo { color: #fff; font-size: 12px; min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
+  #ver .baixo { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 18px max(28px, calc(env(safe-area-inset-bottom) + 14px));
+                background: linear-gradient(transparent, rgba(0,0,0,.75)); z-index: 2; display: flex; align-items: center; gap: 12px; }
+  /* Barra de progresso: visível, bolinha vermelha, arrastável */
+  #barra { flex: 1; position: relative; height: 32px; display: flex; align-items: center; cursor: pointer; touch-action: none; }
+  #barra .trilho { position: relative; width: 100%; height: 5px; border-radius: 3px; background: rgba(255,255,255,.45);
+                   box-shadow: 0 0 6px rgba(0,0,0,.6); transition: height .15s; }
+  #barra .cheio { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 3px; background: #ff1f3d; }
+  #barra .bola { position: absolute; top: 50%; left: 0; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+                 background: #ff1f3d; box-shadow: 0 0 0 3px rgba(255,255,255,.9), 0 2px 6px rgba(0,0,0,.6); transition: transform .15s; }
+  #barra.arrastar .trilho, #barra:hover .trilho { height: 7px; }
+  #barra.arrastar .bola { transform: scale(1.35); }
+  #ver .tempo { color: #fff; font-size: 13px; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.8); min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
   #ver .seta { position: absolute; right: 28px; z-index: 2; width: 48px; height: 48px; justify-content: center;
                border-radius: 50%; background: rgba(255,255,255,.14); transition: background .2s; }
   #ver .seta:hover { background: rgba(255,255,255,.3); }
@@ -119,7 +125,7 @@
   <button class="seta cima" id="ant" title="Anterior (↑)"><svg viewBox="0 0 24 24"><path d="M7.4 15.4 12 10.8l4.6 4.6L18 14l-6-6-6 6z"/></svg></button>
   <button class="seta baixo-s" id="seg" title="Seguinte (↓)"><svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg></button>
   <div class="baixo">
-    <input type="range" id="barra" min="0" max="1000" value="0" step="1">
+    <div id="barra" role="slider" aria-label="Progresso do vídeo"><div class="trilho"><div class="cheio"></div><div class="bola"></div></div></div>
     <span class="tempo" id="tempo">0:00 / 0:00</span>
   </div>
 </div>
@@ -239,7 +245,7 @@
     if (desde) vv.addEventListener('loadedmetadata', () => { try { vv.currentTime = desde; } catch (e) {} }, { once: true });
     vv.poster = lista[idx].style.backgroundImage.slice(5, -2);
     contador.textContent = (idx + 1) + ' / ' + lista.length;
-    barra.value = 0;
+    pintar(0);
     vv.play().catch(() => { vv.muted = true; atualizarSom(); vv.play().catch(()=>{}); });
     // pré-carrega o seguinte
     preCarga = document.createElement('video'); preCarga.preload = 'auto'; preCarga.muted = true;
@@ -276,13 +282,22 @@
   vv.addEventListener('pause', () => { if (ver.classList.contains('aberto')) ver.classList.add('parado'); });
   vv.addEventListener('ended', proximo);                       // no fim, passa ao seguinte
   vv.addEventListener('timeupdate', () => {
-    if (!aArrastar && vv.duration) barra.value = vv.currentTime / vv.duration * 1000;
+    if (!aArrastar && vv.duration) pintar(vv.currentTime / vv.duration);
     tempo.textContent = fmt(vv.currentTime) + ' / ' + fmt(vv.duration);
   });
 
-  barra.addEventListener('input', () => { aArrastar = true; if (vv.duration) vv.currentTime = barra.value / 1000 * vv.duration; });
-  barra.addEventListener('change', () => { aArrastar = false; });
-  ['touchstart', 'mousedown', 'click'].forEach(e => barra.addEventListener(e, ev => ev.stopPropagation()));
+  const cheio = barra.querySelector('.cheio'), bola = barra.querySelector('.bola'), trilho = barra.querySelector('.trilho');
+  function pintar(f) { f = Math.min(1, Math.max(0, f || 0)); cheio.style.width = (f * 100) + '%'; bola.style.left = (f * 100) + '%'; }
+  function posicao(e) { const r = trilho.getBoundingClientRect(); return (e.clientX - r.left) / r.width; }
+  function saltar(e) { const f = Math.min(1, Math.max(0, posicao(e))); pintar(f);
+    if (vv.duration) { vv.currentTime = f * vv.duration; tempo.textContent = fmt(vv.currentTime) + ' / ' + fmt(vv.duration); } }
+  barra.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); aArrastar = true; barra.classList.add('arrastar');
+    try { barra.setPointerCapture(e.pointerId); } catch (_) {} saltar(e); });
+  barra.addEventListener('pointermove', e => { if (aArrastar) { e.preventDefault(); saltar(e); } });
+  const soltar = e => { if (!aArrastar) return; aArrastar = false; barra.classList.remove('arrastar');
+    try { barra.releasePointerCapture(e.pointerId); } catch (_) {} if (vv.paused && ver.classList.contains('aberto')) vv.play().catch(()=>{}); };
+  barra.addEventListener('pointerup', soltar); barra.addEventListener('pointercancel', soltar);
+  ['touchstart', 'touchend', 'click'].forEach(ev => barra.addEventListener(ev, e => e.stopPropagation(), { passive: true }));
 
   document.getElementById('fechar').addEventListener('click', ev => { ev.stopPropagation(); fecharVer(false); });
   document.getElementById('seg').addEventListener('click', ev => { ev.stopPropagation(); proximo(); });

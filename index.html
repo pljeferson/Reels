@@ -159,7 +159,7 @@
     div.dataset.completo = encodeURI(src);
 
     const v = document.createElement('video');
-    v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true; v.autoplay = true;
+    v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true;
     v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
     v.preload = 'none';
     v.addEventListener('error', () => {   // sem versão leve -> usa o vídeo completo
@@ -168,7 +168,7 @@
     div.appendChild(v);
     div.insertAdjacentHTML('beforeend', '<div class="som">' + ICON_OFF + ICON_ON + '</div><div class="expandir" title="Ecrã inteiro">' + ICON_EXP + '</div>');
     div.querySelector('.expandir').addEventListener('click', ev => { ev.stopPropagation(); abrirVer(lista.indexOf(div)); });
-    div.addEventListener('click', () => toque(div));
+    div.addEventListener('click', e => toque(div, e));
     return div;
   }
 
@@ -191,16 +191,51 @@
     ativo = div;
   }
 
-  // Só carrega e toca os reels que estão no ecrã (rápido e leve)
+  // ===== Carregamento inteligente =====
+  // 1) toca o que está no ecrã; 2) em segundo plano pré-carrega os próximos (até ~3 ecrãs abaixo),
+  //    poucos de cada vez e por ordem, para que já estejam prontos quando se faz scroll.
+  const EM_PARALELO = 6;
+  const fila = [], aCarregar = new Set(), visiveis = new Set();
+
+  function carregarTile(div) {
+    const v = div.querySelector('video');
+    if (v.getAttribute('src')) return false;
+    v.preload = 'auto';
+    v.src = srcPreview(div);
+    aCarregar.add(div);
+    const pronto = () => { aCarregar.delete(div); v.removeEventListener('canplay', pronto); v.removeEventListener('error', pronto);
+                           if (visiveis.has(div)) v.play().catch(()=>{}); proximoDaFila(); };
+    v.addEventListener('canplay', pronto); v.addEventListener('error', pronto);
+    setTimeout(() => { if (aCarregar.has(div)) pronto(); }, 8000);   // não bloquear a fila
+    return true;
+  }
+  function proximoDaFila() {
+    while (aCarregar.size < EM_PARALELO && fila.length) {
+      // prioridade: os visíveis primeiro, depois os mais perto do topo do ecrã
+      fila.sort((x, y) => (visiveis.has(y) - visiveis.has(x)) || (x.getBoundingClientRect().top - y.getBoundingClientRect().top));
+      carregarTile(fila.shift());
+    }
+  }
+  function porNaFila(div) { if (!div.querySelector('video').getAttribute('src') && !fila.includes(div) && !aCarregar.has(div)) fila.push(div); }
+
+  // Visibilidade real: tocar / pausar
   const obs = new IntersectionObserver(entradas => {
     entradas.forEach(e => {
       const div = e.target, v = div.querySelector('video');
       if (e.isIntersecting) {
-        if (!v.getAttribute('src')) { v.preload = 'auto'; v.src = srcPreview(div); }
-        v.play().catch(()=>{});
-      } else if (div !== ativo) v.pause();
+        visiveis.add(div);
+        if (!v.getAttribute('src')) { porNaFila(div); }
+        else v.play().catch(()=>{});
+      } else { visiveis.delete(div); if (div !== ativo) v.pause(); }
     });
-  }, { rootMargin: '300px 0px' });
+    proximoDaFila();
+  }, { rootMargin: '150px 0px' });
+
+  // Zona de pré-carga: até 3 ecrãs abaixo do que se vê
+  const obsPre = new IntersectionObserver(entradas => {
+    entradas.forEach(e => { if (e.isIntersecting) porNaFila(e.target); });
+    proximoDaFila();
+  }, { rootMargin: '0px 0px 300% 0px' });
 
   fetch('reels.txt?v=' + Date.now())
     .then(r => r.text())
@@ -208,7 +243,7 @@
       const linhas = txt.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
       if (!linhas.length) { grelha.innerHTML = '<div id="aviso">Ainda não há reels no reels.txt.</div>'; return; }
       colunas();
-      linhas.forEach(l => { const d = criarReel(l); lista.push(d); grelha.appendChild(d); obs.observe(d); });
+      linhas.forEach(l => { const d = criarReel(l); lista.push(d); grelha.appendChild(d); obs.observe(d); obsPre.observe(d); });
       mostrarDica();
     })
     .catch(() => { grelha.innerHTML = '<div id="aviso">Não consegui ler o reels.txt.</div>'; });
@@ -216,8 +251,8 @@
 
   /* ===== 1 toque = som on/off · 2 toques rápidos = ecrã inteiro ===== */
   let ultimo = { div: null, t: 0 };
-  function toque(div) {
-    const agora = Date.now();
+  function toque(div, e) {
+    const agora = (e && e.timeStamp) || performance.now();   // hora real do toque (não atrasa se a página estiver ocupada)
     if (ultimo.div === div && agora - ultimo.t < 320) {   // duplo toque
       ultimo = { div: null, t: 0 };
       if (ativo) { desligar(ativo); ativo = null; }
